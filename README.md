@@ -1,20 +1,24 @@
 Lathe
 =====
-Lathe is a topology manager and service discovery mechanism.  It supports low-latency synchronous services, asynchronous data processing systems, or a mixture of each.  It includes a metadata registry that allows you to notify your topologies about configuration changes external to the cluster, and to reliably deliver configuration changes of the cluster to external machines.  It is inspired by [Samza](https://github.com/apache/incubator-samza), [Storm](https://github.com/apache/storm), [Consul](https://github.com/hashicorp/consul), [groupcache](https://github.com/golang/groupcache) and [Circuit](https://github.com/gocircuit/circuit).
-* Requirements: YARN and Zookeeper.  Kafka is optional for asynchronous flows and persistent state replication.
-* Components:  metadata registry, tasks (similar to a Storm bolt or a Samza task), external metadata agents.
-* The metadata registry provides a REST api for reading and writing metadata.
-* Zookeeper stores metadata state, but the registry is responsible for dissemination of changes.  This keeps load on Zookeeper low, and allows the metadata registry to be killed without worry.
-* The client agent allows external nodes to be reliably notified of membership or metadata changes using a mixture of gossip and polling of the registry.
-* Tries to keep your code running, and will restart failed nodes.
-* Rewires data flows across functional groups and reliably notifies client agents of membership changes.
-* Out of the box client agent support for notifying Varnish and HAProxy of topology changes.  You configure the client agent with actions corresponding to changes to specific subtrees of metadata.
-* Asynchronous flows may use an external Kafka cluster for transport.
-* You can pass arbitrary metadata to a functional group through the registry.  This is useful if you rely on an external server or cluster that can change membership, without having to restart your lathe topology.
-* Persistent state API: local rocksdb with optional double writing to Kafka for recovery.
-* Distributed cache API: based on groupcache.
-* Slow-rollout upgrade strategies for tasks.
-* In the sense that Storm and Samza are processing frameworks, this may be viewed as a micro-framework.  It imposes less doctrine, and gives users more flexibility.  You can block your thread, you can create other threads, but you can also use an abstraction with more batteries included (see HTTPTask below).
+Lathe provides modular abstractions for running code in distributed environments.  You provide the business logic, and Lathe can handle deployment, monitoring, dynamic reconfiguration, and persistence.  It supports low-latency synchronous services, asynchronous data processing systems, persistence, caching, or any mix that you need.  It comes with some high level interfaces if you want to use them, but it makes no assumptions about how you need to use the core functionality of the system: service discovery and scheduling.  This is what makes it a micro-framework: it provides some modular tools but does not force "the one true way".  It is inspired by [Samza](https://github.com/apache/incubator-samza), [Storm](https://github.com/apache/storm), [Consul](https://github.com/hashicorp/consul), [groupcache](https://github.com/golang/groupcache) and [Circuit](https://github.com/gocircuit/circuit).
+###### Requirements 
+1. Mesos
+2. Zookeeper
+3. Kafka is optional for asynchronous flows and persistent state replication
+### Core Components
+#### Scheduling
+You can tag your tasks and provide affinities.  For instance, if you want to run several databases on your cluster, but want to guarantee that only one will ever be scheduled on a particular machine, you may tag each task with "heavy_disk" and set the task's bias for "heavy_disk" to "never".  Other choices are "always", "prefer", "avoid", and "neutral".  "neutral" is the default if you do not specify a bias on either task.  If you want a service to be colocated with a database, set the bias on either or both tasks for the other to a positive number.  When you submit a configuration, if the constraints that you specify are impossible to satisfy, you will be given an error and no action will be taken.
+#### Service Discovery
+A configurable number of metadata registry instances share the responsibilities of liveness monitoring, reliable configuration change broadcasting, and serving of a REST API for requesting current configuration details as well as sending metadata to a functional group of tasks.  There is also an agent daemon that you may optionally use for providing a large number of external hosts with a local copy of the metadata state.  The local agent uses a combination of gossip and periodic polling of the registries to receive updates.  This is useful if you have a number of services in your Lathe cluster that are relied on by external services.  For instance, if you run a cache in Lathe that your external web servers make requests to, and the task for the cache is restarted on a different host or port, you may configure the agent to execute a script that updates the web application's configuration when the cache membership changes.
+### Optional Abstractions
+#### Monitoring
+Similar to how you may configure external agents to execute specified scripts when certain types of events happen, you may also configure the metadata registry to do this.  For example, if you already have a timeseries database that you run nagios checks against periodically, you may have one of the metadata registries execute a script that writes a value into the database whenever a task dies.  You may then have nagios check whether more than 5 tasks have died in the last hour, and generate an alert when the threshold is crossed.
+#### Connection Abstractions
+When a task dies and is restarted, this provides runtime reconfiguration.  Traffic cutover, naive load balancing and double-writing become configuration details rather than modifications to your code.
+#### Persistence
+Inspired by Samza: creates a local RocksDB instance that is optionally replicated to Kafka to be inherited by the tasks replacement should it die.
+#### Caching
+Based on groupcache.
 
 my_topology.toml:
 ```toml
@@ -60,7 +64,7 @@ use lathe::config::{task,registry};
 use lathe::task::{TaskRef};
 
 fn gethost() -> TaskRef {
-  let destinations = task.lookup("backend_distribution").unwrap();
+  let destinations = registry.lookup_tasks("backend_distribution").unwrap();
   let mut total = 0i;
   // don't be this lazy in production
   let mut map = TreeMap::new();
