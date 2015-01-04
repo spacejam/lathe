@@ -5,6 +5,7 @@ Lathe provides modular abstractions for running code in distributed environments
 1. Mesos
 2. Zookeeper
 3. Kafka is optional for asynchronous flows and persistent state replication
+
 ### Core Components
 #### Scheduling
 You can tag your tasks and provide affinities.  For instance, if you want to run several databases on your cluster, but want to guarantee that only one will ever be scheduled on a particular machine, you may tag each task with "heavy_disk" and set the task's bias for "heavy_disk" to "never".  Other choices are "always", "prefer", "avoid", and "neutral".  "neutral" is the default if you do not specify a bias on either task.  If you want a service to be colocated with a database, set the bias on either or both tasks for the other to a positive number.  When you submit a configuration, if the constraints that you specify are impossible to satisfy, you will be given an error and no action will be taken.
