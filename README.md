@@ -17,7 +17,7 @@ Similar to how you may configure external agents to execute specified scripts wh
 #### Connection Abstractions
 When a task dies and is restarted, this provides runtime reconfiguration.  Traffic cutover, naive load balancing and double-writing become configuration details rather than modifications to your code.
 #### Persistence
-Inspired by Samza: creates a local RocksDB instance that is optionally replicated to Kafka to be inherited by the tasks replacement should it die.
+Inspired by Samza: creates a local RocksDB instance that is optionally replicated to Kafka to be inherited by the task's replacement should it die.
 #### Caching
 Based on groupcache.
 
@@ -30,11 +30,8 @@ task = "my::LoadBalancer"    # required
 tasks = 3                    # required
 tags = [ "lb", "net" ]       # optional, assists scheduler properly distribute
 biases = [                   # optional scheduler biases based on tags
-  ["lb", "frontpage"],
-  [
-    -10,  # avoid scheduling multiple loadbalancers on the same machine
-    7     # prefer colocating with frontpage tasks to improve locality
-  ]                   
+  ["lb", "avoid"],
+  ["frontpage", "prefer"]
 ]
 backend_distribution = [     # you can provide your own keys to be accessed from the task
   ["task.http.frontpage.v4-2-1", "task.http.frontpage.v4-2-2"],
